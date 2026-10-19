@@ -92,6 +92,7 @@ namespace LittlePaws.Maze
                 throw new ArgumentOutOfRangeException("number", "Maze levels range from 1 to 50.");
             if (number == 1) return FirstLevel();
             if (number == 6) return SnakeTutorial();
+            if (number == 25) return CloudMaze();
 
             int width, height;
             if (number == 2) { width = 11; height = 9; }
@@ -131,6 +132,8 @@ namespace LittlePaws.Maze
                 stack.Push(destination);
             }
             if (number >= 7) AddSnakes(level, number <= 10 ? Math.Min(3, number - 6) : Math.Min(4, 2 + (number - 10) / 10));
+            if (number >= 10 && number <= 15) AddMud(level, 2 + (number - 10) / 2);
+            else if (number >= 26 && number <= 34) AddMud(level, 3 + (number - 26) / 3);
             return level;
         }
 
@@ -138,19 +141,62 @@ namespace LittlePaws.Maze
         {
             landing = from;
             if (level == null || Math.Abs(direction.x) + Math.Abs(direction.y) != 1
-                || level.TileAt(from) != MazeTile.Floor) return false;
+                || !IsWalkable(level.TileAt(from))) return false;
             Vector2Int adjacent = from + direction;
-            if (level.TileAt(adjacent) != MazeTile.Floor) return false;
+            if (!IsWalkable(level.TileAt(adjacent))) return false;
             landing = adjacent;
             return true;
         }
 
-        // Kept for existing callers. Snake avoidance uses ordinary movement;
-        // the old mud-jump action is deliberately no longer available.
+        public static bool IsWalkable(MazeTile tile) => tile == MazeTile.Floor || tile == MazeTile.Mud;
+
+        // A jump crosses two floor cells. Both the crossed cell and the landing
+        // must be walkable, so it can never cut through a hedge or map boundary.
         public static bool TryStep(MazeLevel level, Vector2Int from, Vector2Int direction, bool jump, out Vector2Int landing)
         {
+            if (!jump) return TryStep(level, from, direction, out landing);
             landing = from;
-            return !jump && TryStep(level, from, direction, out landing);
+            if (!TryStep(level, from, direction, out var middle)
+                || !TryStep(level, middle, direction, out var destination)) return false;
+            landing = destination;
+            return true;
+        }
+
+        // A compact medium maze combines the established hazards under white clouds.
+        // Snake patrols touch only one route cell. Puddles have two dry tiles on each side.
+        private static MazeLevel CloudMaze()
+        {
+            string[] rows =
+            {
+                "#####################",
+                "#########.....#.....#",
+                "#############...#####",
+                "#.....#########...#.#",
+                "#.###############...#",
+                "#.#.........#####.###",
+                "#...###.###.###.#...#",
+                "###...#...#.#.#.#.###",
+                "###.#######M#.#...###",
+                "###.....###...###.###",
+                "#######.###.#####.###",
+                "##....#...#.......###",
+                "##.####.#.####.######",
+                "#...M...#.####.....##",
+                "#####################"
+            };
+            var level=new MazeLevel
+            {
+                Number=25,Width=21,Height=15,Start=new Vector2Int(1,1),Goal=new Vector2Int(19,13),
+                Tiles=new MazeTile[21,15]
+            };
+            for(int y=0;y<level.Height;y++)for(int x=0;x<level.Width;x++)
+            {
+                char tile=rows[level.Height-1-y][x];
+                level.Tiles[x,y]=tile=='#'?MazeTile.Wall:tile=='M'?MazeTile.Mud:MazeTile.Floor;
+            }
+            level.Snakes.Add(new SnakePatrol{From=new Vector2Int(5,7),To=new Vector2Int(3,7),CellsPerSecond=.85f,PhaseSeconds=0f});
+            level.Snakes.Add(new SnakePatrol{From=new Vector2Int(19,8),To=new Vector2Int(17,8),CellsPerSecond=.95f,PhaseSeconds=1.1f});
+            return level;
         }
 
         private static MazeLevel SnakeTutorial()
@@ -275,6 +321,56 @@ namespace LittlePaws.Maze
             }
         }
 
+        private static void AddMud(MazeLevel level, int requested)
+        {
+            var parents = new Dictionary<Vector2Int, Vector2Int>();
+            var queue = new Queue<Vector2Int>();
+            queue.Enqueue(level.Start); parents[level.Start] = level.Start;
+            while (queue.Count > 0 && !parents.ContainsKey(level.Goal))
+            {
+                Vector2Int cell = queue.Dequeue();
+                foreach (Vector2Int direction in Directions)
+                {
+                    Vector2Int next = cell + direction;
+                    if (!IsWalkable(level.TileAt(next)) || parents.ContainsKey(next)) continue;
+                    parents[next] = cell; queue.Enqueue(next);
+                }
+            }
+            var path = new List<Vector2Int>();
+            for (Vector2Int cell = level.Goal; ; cell = parents[cell])
+            { path.Add(cell); if (cell == level.Start) break; }
+            path.Reverse();
+            var selected = new List<Vector2Int>();
+            for (int i = 0; i < requested; i++)
+            {
+                int target = ((i + 1) * path.Count) / (requested + 1), best = -1, distance = int.MaxValue;
+                for (int j = 3; j < path.Count - 3; j++)
+                {
+                    Vector2Int cell = path[j], direction = cell - path[j - 1];
+                    // Leave a straight run-up and run-out. A single dry tile at
+                    // a corner is not enough: turning normally also takes a step.
+                    if (cell - path[j - 2] != direction * 2 || path[j + 1] - cell != direction
+                        || path[j + 2] - cell != direction * 2) continue;
+                    bool safe = true;
+                    for (int offset = -2; offset <= 2; offset++)
+                        if (level.TileAt(path[j + offset]) != MazeTile.Floor) safe = false;
+                    foreach (SnakePatrol snake in level.Snakes)
+                    {
+                        Vector2Int step = new Vector2Int(Math.Sign(snake.To.x - snake.From.x), Math.Sign(snake.To.y - snake.From.y));
+                        for (Vector2Int at = snake.From; ; at += step)
+                        { if (Nearby(cell, at, 2)) safe = false; if (at == snake.To) break; }
+                    }
+                    foreach (Vector2Int other in selected)
+                        if (Nearby(cell, other, 3)) safe = false;
+                    int candidateDistance = Math.Abs(j - target);
+                    if (safe && candidateDistance < distance) { best = j; distance = candidateDistance; }
+                }
+                if (best < 0) break;
+                Vector2Int puddle = path[best];
+                level.Tiles[puddle.x, puddle.y] = MazeTile.Mud; selected.Add(puddle);
+            }
+        }
+
         private static bool PatrolSideCell(MazeLevel level, HashSet<Vector2Int> route, Vector2Int cell)
         {
             return cell.x > 0 && cell.y > 0 && cell.x < level.Width - 1 && cell.y < level.Height - 1
@@ -287,4 +383,29 @@ namespace LittlePaws.Maze
         }
 
     }
+    public static class MazeMovementRules
+    {
+        public const float WalkSeconds = .13f, JumpSeconds = .38f, JumpCooldown = .65f;
+        public const float MudSlowSeconds = 3f, MudSpeedMultiplier = .5f;
+        public const float TakeoffGroundedUntil = .18f, LandingGroundedFrom = .82f;
+        public static float StepSeconds(bool muddy) => WalkSeconds / (muddy ? MudSpeedMultiplier : 1f);
+        public static float JumpHeight(float progress)
+        {
+            if (progress <= 0f || progress >= 1f) return 0f;
+            return (float)Math.Sin(progress * Math.PI) * .75f;
+        }
+    }
+
+    // Both walking and jumping report the tile actually landed on. Crossing mud
+    // in the air never calls LandOn for the skipped tile.
+    public sealed class MazeMudEffect
+    {
+        private float until;
+        public void LandOn(MazeTile tile,float now)
+        { if(tile==MazeTile.Mud)until=now+MazeMovementRules.MudSlowSeconds; }
+        public float Remaining(float now) => Math.Max(0f,until-now);
+        public bool IsSlowed(float now) => Remaining(now)>0f;
+        public void Clear() { until=0f; }
+    }
+
 }

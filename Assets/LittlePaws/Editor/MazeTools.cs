@@ -21,6 +21,7 @@ public static class MazeTools
     static Quaternion restingPawRotation;
     static Vector3 restingPawPosition;
     static float largestPawSwing, largestPawLift;
+    static Vector2Int rearInitialFacing;
     struct Move { public Vector2Int direction;  }
     static MazeTools(){EditorApplication.playModeStateChanged+=Changed;}
     [MenuItem("Little Paws/Testing/Unlock all maze levels")]
@@ -77,14 +78,90 @@ public static class MazeTools
         }
         Debug.Log("PASS: all 50 mazes are solvable; snakes reach one crossing and leave its approach and exit clear.");
     }
-    static void BeginChecks(bool snake)
+    [MenuItem("Little Paws/Check mud and jumps")]
+    public static void CheckMudAndJumps()
+    {
+        for(int number=1;number<=MazeLevels.Count;number++)
+        {
+            var level=MazeLevels.Get(number);var route=new List<Vector2Int>{level.Start};var cell=level.Start;
+            foreach(var move in Solve(level)) {cell+=move.direction;route.Add(cell);}
+            if(((number>=10&&number<=15)||(number>=25&&number<=34))!=(level.MudCount>0))
+                throw new Exception("Mud should appear in levels 10-15 and 25-34: "+number);
+            for(int i=1;i<route.Count-1;i++)
+            {
+                if(level.TileAt(route[i])!=MazeTile.Mud)continue;
+                var direction=route[i]-route[i-1];
+                if(i<2 || i+2>=route.Count || route[i]-route[i-2]!=direction*2 || route[i+2]-route[i]!=direction*2
+                    || level.TileAt(route[i-2])!=MazeTile.Floor || level.TileAt(route[i+2])!=MazeTile.Floor)
+                    throw new Exception("Puddle needs two straight dry approach and exit tiles in level "+number);
+                if(level.TileAt(route[i-1])!=MazeTile.Floor || level.TileAt(route[i+1])!=MazeTile.Floor
+                    || !MazeLevels.TryStep(level,route[i-1],direction,true,out var landing) || landing!=route[i+1])
+                    throw new Exception("Puddle needs dry take-off and landing in level "+number);
+            }
+        }
+        var effect=new MazeMudEffect();effect.LandOn(MazeTile.Mud,10);
+        if(!effect.IsSlowed(12.99f)||effect.IsSlowed(13))throw new Exception("Mud slowdown must last 3 seconds");
+        if(Mathf.Abs(MazeMovementRules.StepSeconds(true)-2*MazeMovementRules.StepSeconds(false))>.00001f)
+            throw new Exception("Mud should halve running speed");
+        effect.Clear();effect.LandOn(MazeTile.Floor,0);
+        if(effect.IsSlowed(0))throw new Exception("Jumping onto dry floor should avoid slowdown");
+        Debug.Log("PASS: mud in levels 10-15 and 25-34; puddles are jumpable; mud slows running by half for 3 seconds.");
+    }
+    [MenuItem("Little Paws/Run level 25 dust checks")]
+    public static void RunDust(){BeginChecks(false,true);}
+    [MenuItem("Little Paws/Check dust preview rules")]
+    public static void CheckDustRules()
+    {
+        var preview=new MazeDustSequence();
+        for(int number=1;number<=50;number++)
+        {
+            preview.Begin(number);
+            if(preview.IsPreviewing!=(number>=25&&number<=34) || preview.DustOpacity!=0)
+                throw new Exception("Cloud previews should start clear in levels 25-34");
+        }
+        var cloudMaze=MazeLevels.Get(25);
+        if(cloudMaze.Width!=21 || cloudMaze.Height!=15 || cloudMaze.Snakes.Count!=2 || cloudMaze.MudCount!=2)
+            throw new Exception("Level 25 should be a medium maze with two snakes and two puddles");
+        preview.Begin(25);preview.Advance(MazeDustSequence.OverviewSeconds);
+        if(!preview.IsPreviewing || preview.DustOpacity!=0)throw new Exception("Full-map overview must stay clear");
+        preview.Advance(MazeDustSequence.TransitionSeconds);
+        if(preview.IsPreviewing || preview.DustOpacity!=1)throw new Exception("Dust must fully cover distant paths after preview");
+        if(MazeDustSequence.Obscurity(0)!=0 || MazeDustSequence.Obscurity(4)!=1)
+            throw new Exception("Dust should reveal nearby paths and hide distant ones");
+        Debug.Log("PASS: levels 25-34 start with a clear full map, then transition to nearby visibility in white clouds.");
+    }
+    [MenuItem("Little Paws/Run level 35 rear view checks")]
+    public static void RunRear(){BeginChecks(false,false,true);}
+    [MenuItem("Little Paws/Check rear view controls")]
+    public static void CheckRearControls()
+    {
+        foreach(var direction in new[]{Vector2Int.up,Vector2Int.right,Vector2Int.down,Vector2Int.left})
+        {
+            if(MazeRearControls.TurnLeft(MazeRearControls.TurnLeft(direction))!=-direction
+                || MazeRearControls.TurnRight(MazeRearControls.TurnRight(direction))!=-direction
+                || MazeRearControls.IsForward(direction,-direction))
+                throw new Exception("Turn-around and forward-only controls are inconsistent");
+        }
+        for(int number=1;number<=50;number++)
+        {
+            if(MazeRearControls.AppliesTo(number)!=(number>=35))throw new Exception("Rear view should start at level 35");
+            if(number<35)continue;
+            var level=MazeLevels.Get(number);Solve(level);
+            if(!MazeLevels.TryStep(level,level.Start,MazeRearControls.InitialFacing(level),out _))
+                throw new Exception("Rear view starts facing a hedge in level "+number);
+        }
+        Debug.Log("PASS: levels 35-50 use turns and forward movement, with a clear initial heading.");
+    }
+    static void BeginChecks(bool snake,bool dust=false,bool rear=false)
     {
         if(EditorApplication.isPlaying || !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())return;
-        CheckSnakePlacement();
+        CheckSnakePlacement();CheckMudAndJumps();CheckDustRules();CheckRearControls();
         SessionState.SetBool(Running,true);SessionState.SetBool("LittlePaws.MazeCheck.HadSave",PlayerPrefs.HasKey(SaveKey));
         SessionState.SetString("LittlePaws.MazeCheck.OldSave",PlayerPrefs.GetString(SaveKey,""));
         SessionState.SetBool("LittlePaws.MazeCheck.SnakeRun",snake);
-        var initial=MazeProgress.Create(DateTime.UtcNow);if(snake)initial.HighestUnlocked=6;
+        SessionState.SetBool("LittlePaws.MazeCheck.DustRun",dust);
+        SessionState.SetBool("LittlePaws.MazeCheck.RearRun",rear);
+        var initial=MazeProgress.Create(DateTime.UtcNow);if(snake)initial.HighestUnlocked=6;if(dust)initial.HighestUnlocked=25;if(rear)initial.HighestUnlocked=35;
         PlayerPrefs.SetString(SaveKey,JsonUtility.ToJson(initial));PlayerPrefs.Save();
         EditorSceneManager.OpenScene(Scene);EditorApplication.isPlaying=true;
     }
@@ -93,7 +170,7 @@ public static class MazeTools
         if(!SessionState.GetBool(Running,false))return;
         if(state==PlayModeStateChange.EnteredPlayMode)
         {
-            started=EditorApplication.timeSinceStartup;phase=SessionState.GetBool("LittlePaws.MazeCheck.SnakeRun",false)?100:0;failed=false;report="";
+            started=EditorApplication.timeSinceStartup;phase=SessionState.GetBool("LittlePaws.MazeCheck.RearRun",false)?300:SessionState.GetBool("LittlePaws.MazeCheck.DustRun",false)?200:SessionState.GetBool("LittlePaws.MazeCheck.SnakeRun",false)?100:0;failed=false;report="";
             EditorApplication.update-=Tick;EditorApplication.update+=Tick;
         }
         if(state==PlayModeStateChange.EnteredEditMode)
@@ -110,6 +187,71 @@ public static class MazeTools
         {
             if(!EditorApplication.isPlaying)return;
             if(EditorApplication.timeSinceStartup-started>30){Finish("Runtime check timed out");return;}
+            if(phase==300)
+            {
+                game=UnityEngine.Object.FindAnyObjectByType<EscapeMazeGame>();if(!game||!game.Ready)return;
+                Check(game.StartLevel(35)&&game.Energy==45,"Rear-view trail spends 5 energy once");
+                Check(game.IsRearView,"Level 35 uses rear view");
+                var view=UnityEngine.Object.FindAnyObjectByType<MazeThirdPersonView>();
+                Check(view && view.IsReady,"Real 3D maze renderer is ready");
+                Check(!game.IsMiniMapMinimized,"Map begins expanded");game.ToggleMiniMap();
+                Check(game.IsMiniMapMinimized,"Map can be minimized");game.ToggleMiniMap();
+                Check(!game.IsMiniMapMinimized,"Map can be restored");
+                rearInitialFacing=game.FacingCellDirection;
+                Check(game.TurnLeft()&&game.PlayerCell==MazeLevels.Get(35).Start,"Left turns without moving");
+                Check(game.FacingCellDirection==MazeRearControls.TurnLeft(rearInitialFacing),"Left is relative to the pet");
+                turnStarted=EditorApplication.timeSinceStartup;phase=301;return;
+            }
+            if(phase==301)
+            {
+                if(EditorApplication.timeSinceStartup-turnStarted<.45)return;
+                var view=UnityEngine.Object.FindAnyObjectByType<MazeThirdPersonView>();
+                Check(view.CameraIsBehindPet,"Camera stays behind the pet through a left turn");
+                CheckRearRendered(view.Texture);
+                Check(game.TurnRight()&&game.FacingCellDirection==rearInitialFacing,"Right reverses the left turn");
+                turnStarted=EditorApplication.timeSinceStartup;phase=302;return;
+            }
+            if(phase==302)
+            {
+                if(EditorApplication.timeSinceStartup-turnStarted<.45)return;
+                Check(!game.TryMove(-game.FacingCellDirection),"Direct backward movement is rejected");
+                Check(game.MoveForward(),"Forward moves in the facing direction");phase=303;return;
+            }
+            if(phase==303)
+            {
+                if(game.IsMoving)return;
+                Check(game.PlayerCell==MazeLevels.Get(35).Start+rearInitialFacing,"Forward lands in the tile ahead");
+                Check(game.Energy==45,"Turns and movement don't cost extra energy");Finish(null);return;
+            }
+            if(phase==200)
+            {
+                game=UnityEngine.Object.FindAnyObjectByType<EscapeMazeGame>();if(!game||!game.Ready)return;
+                Check(game.StartLevel(25)&&game.Energy==45,"Dust trail spends 5 energy once");
+                Check(game.IsPreviewingDust && game.DustOpacity==0,"Level 25 begins with a clear map preview");
+                Check(!game.TryMove(Vector2Int.right)&&!game.TryJump(Vector2Int.right),"Movement and jumps wait for the overview");
+                Canvas.ForceUpdateCanvases();
+                var grid=GameObject.Find("Maze grid").GetComponent<RectTransform>();
+                var viewport=grid.parent.GetComponent<RectTransform>();var corners=new Vector3[4];grid.GetWorldCorners(corners);
+                var bounds=viewport.rect;bounds.xMin-=.1f;bounds.xMax+=.1f;bounds.yMin-=.1f;bounds.yMax+=.1f;
+                foreach(var corner in corners)Check(bounds.Contains(viewport.InverseTransformPoint(corner)),"Entire maze fits inside the clear overview");
+                phase=201;return;
+            }
+            if(phase==201)
+            {
+                if(game.IsPreviewingDust)return;
+                turnStarted=EditorApplication.timeSinceStartup;phase=202;return;
+            }
+            if(phase==202)
+            {
+                if(EditorApplication.timeSinceStartup-turnStarted<.1)return;
+                var curtain=UnityEngine.Object.FindAnyObjectByType<MazeDustView>();
+                Check(curtain && curtain.Opacity>.99f && game.DustOpacity==1,"Dust arrives after the overview");
+                var shadow=GameObject.Find("Pet shadow").GetComponent<RectTransform>();
+                Vector2 center=curtain.rectTransform.InverseTransformPoint(shadow.position);
+                Check(Vector2.Distance(center,curtain.ClearCenter)<.1f,"Clear circle follows the pet on the floor");
+                Check(game.Energy==45 && game.PlayerCell==MazeLevels.Get(25).Start,"Preview keeps position and energy unchanged");
+                Finish(null);return;
+            }
             if(phase==100)
             {
                 game=UnityEngine.Object.FindAnyObjectByType<EscapeMazeGame>();if(!game||!game.Ready)return;
@@ -180,6 +322,20 @@ public static class MazeTools
         }
         catch(Exception e){Finish(e.ToString());}
     }
+    static void CheckRearRendered(RenderTexture target)
+    {
+        var previous=RenderTexture.active;Texture2D pixels=null;
+        try
+        {
+            RenderTexture.active=target;pixels=new Texture2D(target.width,target.height,TextureFormat.RGBA32,false);
+            pixels.ReadPixels(new Rect(0,0,target.width,target.height),0,0);pixels.Apply();var colors=pixels.GetPixels32();
+            int different=0;var background=colors[0];
+            foreach(var color in colors)
+                if(Mathf.Abs(color.r-background.r)+Mathf.Abs(color.g-background.g)+Mathf.Abs(color.b-background.b)>30)different++;
+            Check(different>500,"Rear view renders geometry rather than a blank rectangle");
+        }
+        finally{RenderTexture.active=previous;if(pixels)UnityEngine.Object.Destroy(pixels);}
+    }
     static void CheckRenderedPet()
     {
         var previous=RenderTexture.active;
@@ -217,7 +373,7 @@ public static class MazeTools
     {
         if(error!=null){failed=true;report+="FAIL: "+error+"\n";}
         Directory.CreateDirectory("Library/LittlePawsChecks");
-        File.WriteAllText(SessionState.GetBool("LittlePaws.MazeCheck.SnakeRun",false)?"Library/LittlePawsChecks/SnakeResults.txt":"Library/LittlePawsChecks/EscapeMazeResults.txt",(failed?"FAILED\n":"PASSED\n")+report);
+        File.WriteAllText(SessionState.GetBool("LittlePaws.MazeCheck.RearRun",false)?"Library/LittlePawsChecks/RearResults.txt":SessionState.GetBool("LittlePaws.MazeCheck.DustRun",false)?"Library/LittlePawsChecks/DustResults.txt":SessionState.GetBool("LittlePaws.MazeCheck.SnakeRun",false)?"Library/LittlePawsChecks/SnakeResults.txt":"Library/LittlePawsChecks/EscapeMazeResults.txt",(failed?"FAILED\n":"PASSED\n")+report);
         Debug.Log("Escape Maze checks\n"+report);EditorApplication.update-=Tick;EditorApplication.isPlaying=false;
     }
 }

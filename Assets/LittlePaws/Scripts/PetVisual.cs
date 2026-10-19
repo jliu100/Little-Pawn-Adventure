@@ -192,6 +192,22 @@ namespace LittlePaws
             rightEar.localRotation=Quaternion.Euler(flop,0,(isPuppy?18f:0f)+spread);
         }
 
+        /// <summary>Tuck the paws in flight; the maze moves the image along its jump arc.</summary>
+        public void AnimateJump(float progress,float time)
+        {
+            AnimateRun(0,time);
+            float tuck=Mathf.Sin(Mathf.Clamp01(progress)*Mathf.PI);
+            visualRoot.localPosition=Vector3.zero;
+            visualRoot.localRotation=Quaternion.Euler(Mathf.Sin(progress*Mathf.PI*2)*-10f,0,0);
+            visualRoot.localScale=new Vector3(1f,1f-tuck*.06f,1f+tuck*.04f);
+            for(int i=0;i<legs.Count;i++)
+            {
+                legs[i].localPosition=legRestPositions[i]+Vector3.up*(tuck*.08f);
+                legs[i].localRotation=Quaternion.Euler((i<2?-50f:45f)*tuck,0,0);
+            }
+            head.localRotation=Quaternion.Euler(-tuck*5f,0,0);
+        }
+
         /// <summary>Raise the face gently toward the viewer when resting or being washed.</summary>
         public void LookToward(Vector3 worldTarget, float weight)
         {

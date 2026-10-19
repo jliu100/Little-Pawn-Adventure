@@ -217,6 +217,13 @@ namespace LittlePaws.Maze
             return p.Finish("Maze Mud Puddle");
         }
 
+        public static Sprite MapArrow()
+        {
+            var p=new Canvas(32);
+            p.Polygon(new[]{new Vector2(96,182),new Vector2(20,18),new Vector2(96,54),new Vector2(172,18)},Color.white);
+            return p.Finish("Mini map facing arrow");
+        }
+
         public static Sprite Paw()
         {
             var p = new Canvas(64);

@@ -23,7 +23,8 @@ namespace LittlePaws.Maze
         private UniversalRenderPipeline.SingleCameraRequest renderRequest;
         private int previewMask, previewLayer;
         private bool visible = true;
-        private bool moving;
+        private bool moving, jumping;
+        private float jumpProgress, movementIntensity=1f;
         private Quaternion targetRotation = Quaternion.Euler(0, 180, 0);
 
         public void Initialize(bool puppy)
@@ -129,13 +130,14 @@ namespace LittlePaws.Maze
 
         public void ResetFacing()
         {
-            moving = false;
+            moving = false; jumping=false;
             FacingDirection = Vector2Int.down;
             targetRotation = Quaternion.Euler(0, 180, 0);
             if (pet != null) pet.transform.localRotation = targetRotation;
         }
 
-        public void SetMoving(bool value) { moving = value; }
+        public void SetMoving(bool value,float intensity=1f) { moving=value;movementIntensity=Mathf.Clamp01(intensity); }
+        public void SetJumping(bool value,float progress) { jumping=value;jumpProgress=Mathf.Clamp01(progress); }
 
         public void SetVisible(bool value)
         {
@@ -149,7 +151,8 @@ namespace LittlePaws.Maze
             if(!Texture.IsCreated()){Texture.Create();ClearTexture();}
             pet.transform.localRotation = Quaternion.RotateTowards(pet.transform.localRotation,
                 targetRotation, 900 * Time.unscaledDeltaTime);
-            pet.AnimateRun(moving ? 1 : 0, Time.unscaledTime);
+            if(jumping)pet.AnimateJump(jumpProgress,Time.unscaledTime);
+            else pet.AnimateRun(moving ? movementIntensity : 0, Time.unscaledTime);
 
             // On the first frame the configured asset may exist before URP has initialized.
             // The normal scene camera initializes it later that frame; draw on the next update.
