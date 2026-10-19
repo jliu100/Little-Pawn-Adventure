@@ -17,7 +17,7 @@ namespace LittlePaws
         TownLocation pendingVisit;
         RectTransform placeCard;
         Text placeTitle, placeDescription;
-        GameObject enterHomeButton;
+        GameObject enterHomeButton, enterMazeButton;
         public bool Puppy { get; private set; }
         public float Cleanliness { get; private set; } = 35;
         public float WashProgress { get; private set; }
@@ -183,6 +183,7 @@ namespace LittlePaws
             placeTitle=Label(placeCard,"",new Vector2(20,-17),new Vector2(266,35),25,ink,FontStyle.Bold);
             placeDescription=Label(placeCard,"",new Vector2(20,-62),new Vector2(264,90),18,ink);
             enterHomeButton=Button(placeCard,"Enter home",new Vector2(20,-174),new Vector2(167,40),()=>LoadScene("PetHome")).gameObject;
+            enterMazeButton=Button(placeCard,"Escape Maze",new Vector2(20,-174),new Vector2(167,40),()=>LoadScene("EscapeMaze")).gameObject;
             Button(placeCard,"Close",new Vector2(198,-174),new Vector2(86,40),()=>placeCard.gameObject.SetActive(false));
             placeCard.gameObject.SetActive(false);
         }
@@ -195,7 +196,7 @@ namespace LittlePaws
         void ShowPlace(TownLocation place)
         {
             placeTitle.text=place.Title;placeDescription.text=place.Description;
-            enterHomeButton.SetActive(place.Id=="home");placeCard.gameObject.SetActive(true);
+            enterHomeButton.SetActive(place.Id=="home");enterMazeButton.SetActive(place.Id=="adventure");placeCard.gameObject.SetActive(true);
             hint.text="Welcome to "+place.Title+".";
         }
 

@@ -16,6 +16,7 @@ namespace LittlePaws
         public void Build(bool puppy)
         {
             isPuppy = puppy;
+            movement = 0f;
             if (visualRoot != null) { visualRoot.gameObject.SetActive(false); Destroy(visualRoot.gameObject); }
             foreach (Material material in materials) if (material != null) Destroy(material);
             materials.Clear(); legs.Clear();
@@ -125,6 +126,8 @@ namespace LittlePaws
             if(visualRoot==null)return;
             movement=Mathf.Lerp(movement,Mathf.Clamp01(speed),.18f);
             float phase=time*10f;
+            visualRoot.localRotation=Quaternion.identity;
+            visualRoot.localScale=Vector3.one;
             visualRoot.localPosition=new Vector3(0,Mathf.Sin(time*2.8f)*.009f+Mathf.Abs(Mathf.Sin(phase))*.025f*movement,0);
             for(int i=0;i<legs.Count;i++)
                 legs[i].localRotation=Quaternion.Euler(Mathf.Sin(phase+((i==0||i==3)?0:Mathf.PI))*25f*movement,0,0);
@@ -134,6 +137,45 @@ namespace LittlePaws
             {
                 leftEar.localRotation=Quaternion.Euler(Mathf.Sin(phase)*movement*10f,0,-18f);
                 rightEar.localRotation=Quaternion.Euler(-Mathf.Sin(phase)*movement*10f,0,18f);
+            }
+        }
+
+        /// <summary>A bounding run for maze movement; zero intensity eases back into the resting pose.</summary>
+        public void AnimateRun(float speed, float time)
+        {
+            if(visualRoot==null)return;
+            // Exponential smoothing gives the same take-off and settling feel at different frame rates.
+            float blend=1f-Mathf.Exp(-14f*Mathf.Max(0f,Time.deltaTime));
+            movement=Mathf.Lerp(movement,Mathf.Clamp01(speed),blend);
+            float phase=time*17f;
+            float stride=Mathf.Sin(phase);
+            float bound=Mathf.Sin(phase-Mathf.PI*.25f);
+            float idle=1f-movement;
+            visualRoot.localPosition=new Vector3(0,Mathf.Sin(time*2.8f)*.009f+Mathf.Abs(bound)*.055f*movement,0);
+            visualRoot.localRotation=Quaternion.Euler(stride*4f*movement,0,0);
+            float stretch=Mathf.Cos(phase*2f)*.025f*movement;
+            visualRoot.localScale=new Vector3(1f-stretch*.4f,1f+stretch,1f-stretch*.6f);
+            for(int i=0;i<legs.Count;i++)
+            {
+                // Front paws bound together while the rear pair pushes in the opposite phase.
+                float legPhase=phase+(i<2?0:Mathf.PI);
+                float swing=Mathf.Sin(legPhase)*42f*movement;
+                legs[i].localRotation=Quaternion.Euler(swing,0,0);
+            }
+            // Counter the body pitch so the face stays readable while running.
+            head.localRotation=Quaternion.Euler(
+                Mathf.Sin(time*2.5f)*2f*idle-stride*2.8f*movement,
+                Mathf.Sin(time*.7f)*4f*idle,
+                Mathf.Sin(time*1.4f)*1.5f*idle);
+            tail.localRotation=Quaternion.Euler(
+                Mathf.Sin(phase-.6f)*9f*movement,
+                Mathf.Sin(time*(isPuppy?10f:4f))*(isPuppy?30f:16f),
+                Mathf.Sin(time*2f)*3f);
+            if(isPuppy)
+            {
+                float flop=Mathf.Sin(phase-.65f)*20f*movement;
+                leftEar.localRotation=Quaternion.Euler(flop,0,-18f-Mathf.Abs(bound)*8f*movement);
+                rightEar.localRotation=Quaternion.Euler(flop,0,18f+Mathf.Abs(bound)*8f*movement);
             }
         }
 
