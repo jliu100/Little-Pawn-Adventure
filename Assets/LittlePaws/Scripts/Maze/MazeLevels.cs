@@ -30,7 +30,8 @@ namespace LittlePaws.Maze
         }
     }
 
-    // Straight, dry patrols move continuously from one corridor edge to the other.
+    // A side-corridor patrol reaches one crossing, then retreats. The main
+    // corridor cells before and after that crossing are always safe to wait on.
     public sealed class SnakePatrol
     {
         public Vector2Int From, To;
@@ -96,7 +97,7 @@ namespace LittlePaws.Maze
             if (number == 2) { width = 11; height = 9; }
             else if (number == 3) { width = 15; height = 11; }
             else if (number == 4) { width = 19; height = 13; }
-            else if (number == 5 || number == 6) { width = 21; height = 15; }
+            else if (number == 5) { width = 21; height = 15; }
             else if (number == 7) { width = 23; height = 15; }
             else if (number == 8) { width = 23; height = 17; }
             else if (number == 9) { width = 25; height = 17; }
@@ -160,8 +161,8 @@ namespace LittlePaws.Maze
                 "#####.....#",
                 "#####.#####",
                 "#####.#####",
-                "#.........#",
-                "####...####",
+                "###...#####",
+                "#####.#####",
                 "#####.#####",
                 "#.....#####",
                 "###########"
@@ -177,7 +178,7 @@ namespace LittlePaws.Maze
                     level.Tiles[x, y] = rows[level.Height - 1 - y][x] == '#' ? MazeTile.Wall : MazeTile.Floor;
             level.Snakes.Add(new SnakePatrol
             {
-                From = new Vector2Int(1, 4), To = new Vector2Int(9, 4),
+                From = new Vector2Int(3, 4), To = new Vector2Int(5, 4),
                 CellsPerSecond = 0.75f, PhaseSeconds = 0f
             });
             return level;
@@ -229,37 +230,61 @@ namespace LittlePaws.Maze
             Vector2Int cursor = level.Goal;
             while (cursor != level.Start) { path.Add(cursor); cursor = parents[cursor]; }
             path.Reverse();
-            var candidates = new List<SnakePatrol>();
-            var used = new HashSet<string>();
-            foreach (Vector2Int cell in path)
+            var route = new HashSet<Vector2Int>(path);
+            route.Add(level.Start);
+            var used = new List<Vector2Int>();
+            for (int i = 0; i < requested; i++)
             {
-                if (cell == level.Goal) continue;
-                foreach (Vector2Int direction in new[] { Vector2Int.right, Vector2Int.up })
+                int target = ((i + 1) * path.Count) / (requested + 1);
+                var order = new List<int>();
+                for (int j = 1; j + 1 < path.Count; j++) order.Add(j);
+                order.Sort((a, b) => {
+                    int comparison = Math.Abs(a - target).CompareTo(Math.Abs(b - target));
+                    return comparison != 0 ? comparison : a.CompareTo(b);
+                });
+                bool placed = false;
+                foreach (int j in order)
                 {
-                    Vector2Int from = cell, to = cell;
-                    for (int i = 0; i < 3 && SafePatrolCell(level, from - direction); i++) from -= direction;
-                    for (int i = 0; i < 3 && SafePatrolCell(level, to + direction); i++) to += direction;
-                    int length = Math.Abs(to.x - from.x) + Math.Abs(to.y - from.y);
-                    if (length < 2) continue;
-                    string key = from.x + "," + from.y + ":" + to.x + "," + to.y;
-                    if (!used.Add(key)) continue;
-                    candidates.Add(new SnakePatrol { From = from, To = to });
+                    Vector2Int crossing = path[j], approach = crossing - path[j - 1];
+                    if (path[j + 1] - crossing != approach) continue;
+                    if (Nearby(crossing, level.Start, 3) || Nearby(crossing, level.Goal, 3)) continue;
+                    bool crowded = false;
+                    foreach (Vector2Int previous in used)
+                        if (Nearby(crossing, previous, 4)) { crowded = true; break; }
+                    if (crowded) continue;
+                    Vector2Int side = new Vector2Int(-approach.y, approach.x);
+                    for (int sign = 1; sign >= -1; sign -= 2)
+                    {
+                        Vector2Int middle = crossing + side * sign;
+                        Vector2Int end = crossing + side * (2 * sign);
+                        if (!PatrolSideCell(level, route, middle) || !PatrolSideCell(level, route, end)) continue;
+                        // Only these two cells are added, and the snake walks both.
+                        // No passing lane or open room: A -> B -> C stays narrow.
+                        level.Tiles[middle.x, middle.y] = MazeTile.Floor;
+                        level.Tiles[end.x, end.y] = MazeTile.Floor;
+                        level.Snakes.Add(new SnakePatrol
+                        {
+                            From = end, To = crossing,
+                            CellsPerSecond = Math.Min(1.25f, 0.75f + (level.Number - 7) * 0.012f),
+                            PhaseSeconds = (i * 1.73f) + level.Number * 0.11f
+                        });
+                        used.Add(crossing); placed = true; break;
+                    }
+                    if (placed) break;
                 }
-            }
-            int count = Math.Min(requested, candidates.Count);
-            for (int i = 0; i < count; i++)
-            {
-                int index = ((i + 1) * candidates.Count) / (count + 1);
-                SnakePatrol patrol = candidates[index];
-                patrol.CellsPerSecond = Math.Min(1.25f, 0.75f + (level.Number - 7) * 0.012f);
-                patrol.PhaseSeconds = (i * 1.73f) + level.Number * 0.11f;
-                level.Snakes.Add(patrol);
             }
         }
 
-        private static bool SafePatrolCell(MazeLevel level, Vector2Int cell)
+        private static bool PatrolSideCell(MazeLevel level, HashSet<Vector2Int> route, Vector2Int cell)
         {
-            return cell != level.Start && cell != level.Goal && level.TileAt(cell) == MazeTile.Floor;
+            return cell.x > 0 && cell.y > 0 && cell.x < level.Width - 1 && cell.y < level.Height - 1
+                && !route.Contains(cell);
         }
+
+        private static bool Nearby(Vector2Int a, Vector2Int b, int radius)
+        {
+            return Math.Abs(a.x - b.x) <= radius && Math.Abs(a.y - b.y) <= radius;
+        }
+
     }
 }

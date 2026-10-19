@@ -235,7 +235,7 @@ namespace LittlePaws
             if(lookingAtYou)
                 pet.rotation=Quaternion.Slerp(pet.rotation,FacingCamera(),1-Mathf.Exp(-6*Time.deltaTime));
             attention=Mathf.MoveTowards(attention,lookingAtYou?1:0,3*Time.deltaTime);
-            visual.Animate(Vector3.Distance(before,pet.position)/Mathf.Max(.0001f,Time.deltaTime),Time.time);
+            visual.AnimateRun(Vector3.Distance(before,pet.position)/Mathf.Max(.0001f,Time.deltaTime)/(townMap?3.8f:2.1f),Time.time);
             visual.LookToward(cam.transform.position,attention);
             if(dragging&&Time.unscaledTime-lastActive>.16f) wasRubbing=false;
             if(dragging&&wasRubbing)

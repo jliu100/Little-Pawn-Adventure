@@ -174,9 +174,9 @@ namespace LittlePaws.Maze
             BuildBoard();
             bool hazards=level.Snakes.Count>0;
             hazardHeading.text=hazards?"AVOID THE SNAKES":"FIND THE EXIT";
-            hazardGuide.text=hazards?"Wait for a clear gap,\nthen run across.\nKeyboard: arrows / WASD":"Follow the open paths.\nKeyboard: arrows / WASD";
+            hazardGuide.text=hazards?"Wait for the snake\nto retreat, then cross.\nKeyboard: arrows / WASD":"Follow the open paths.\nKeyboard: arrows / WASD";
             levelText.text="TRAIL "+number.ToString("00")+" / "+(hazards?"SNAKE CROSSING":"FIND THE EXIT");
-            hint.text=number==1?"Follow the open path from the paw to the golden star.":number==6?"One slow snake. Wait somewhere safe, then cross behind it.":hazards?"Avoid the patrols. A snake touch sends you to the start without spending more energy.":"Find the golden star. Take your time; there is no time limit.";
+            hint.text=number==1?"Follow the open path from the paw to the golden star.":number==6?"The snake reaches one crossing, then retreats. Wait before it, then run past when clear.":hazards?"Avoid the patrols. A snake touch sends you to the start without spending more energy.":"Find the golden star. Take your time; there is no time limit.";
             RefreshEnergyUI(true);return true;
         }
         void BuildBoard()

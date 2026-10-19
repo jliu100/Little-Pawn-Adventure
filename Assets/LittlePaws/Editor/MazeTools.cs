@@ -17,6 +17,10 @@ public static class MazeTools
     static bool failed;
     static string report;
     static Queue<Move> solution;
+    static Transform runningPaw;
+    static Quaternion restingPawRotation;
+    static Vector3 restingPawPosition;
+    static float largestPawSwing, largestPawLift;
     struct Move { public Vector2Int direction;  }
     static MazeTools(){EditorApplication.playModeStateChanged+=Changed;}
     [MenuItem("Little Paws/Testing/Unlock all maze levels")]
@@ -40,9 +44,43 @@ public static class MazeTools
     public static void Run(){BeginChecks(false);}
     [MenuItem("Little Paws/Run snake level 6 checks")]
     public static void RunSnake(){BeginChecks(true);}
+    [MenuItem("Little Paws/Check snake placement")]
+    public static void CheckSnakePlacement()
+    {
+        for(int number=1;number<=MazeLevels.Count;number++)
+        {
+            var level=MazeLevels.Get(number);
+            Solve(level);
+            foreach(var snake in level.Snakes)
+            {
+                var delta=snake.To-snake.From;
+                if(Math.Abs(delta.x)+Math.Abs(delta.y)!=2 || (delta.x!=0&&delta.y!=0))
+                    throw new Exception("Expected a short straight snake patrol in level "+number);
+                var side=new Vector2Int(Math.Sign(delta.x),Math.Sign(delta.y));
+                var along=new Vector2Int(-side.y,side.x);
+                if(level.TileAt(snake.To-along)!=MazeTile.Floor || level.TileAt(snake.To+along)!=MazeTile.Floor)
+                    throw new Exception("Snake crossing must have safe floor before and after it in level "+number);
+                for(var at=snake.From;;at+=side)
+                {
+                    if(level.TileAt(at)!=MazeTile.Floor || at==level.Start || at==level.Goal)
+                        throw new Exception("Unsafe snake placement in level "+number);
+                    if(at==snake.To)break;
+                }
+                // Waiting on A or C is safe throughout an entire patrol cycle.
+                for(int tick=0;tick<=100;tick++)
+                {
+                    var position=snake.PositionAt(tick*4f/(100*snake.CellsPerSecond));
+                    if(Vector2.Distance(position,snake.To-along)<.99f || Vector2.Distance(position,snake.To+along)<.99f)
+                        throw new Exception("Snake reaches a waiting tile in level "+number);
+                }
+            }
+        }
+        Debug.Log("PASS: all 50 mazes are solvable; snakes reach one crossing and leave its approach and exit clear.");
+    }
     static void BeginChecks(bool snake)
     {
         if(EditorApplication.isPlaying || !EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())return;
+        CheckSnakePlacement();
         SessionState.SetBool(Running,true);SessionState.SetBool("LittlePaws.MazeCheck.HadSave",PlayerPrefs.HasKey(SaveKey));
         SessionState.SetString("LittlePaws.MazeCheck.OldSave",PlayerPrefs.GetString(SaveKey,""));
         SessionState.SetBool("LittlePaws.MazeCheck.SnakeRun",snake);
@@ -110,16 +148,29 @@ public static class MazeTools
                 Check(Vector3.Dot(model.transform.forward,wanted)>.98f,"3D model turns "+(phase==10?"left":phase==11?"right":"toward viewer"));
                 if(phase==10){CheckRenderedPet();petView.Face(Vector2Int.right);phase=11;turnStarted=EditorApplication.timeSinceStartup;return;}
                 if(phase==11){petView.ResetFacing();phase=12;turnStarted=EditorApplication.timeSinceStartup;return;}
-                solution=Solve(MazeLevels.Get(1));phase=1;return;
+                solution=Solve(MazeLevels.Get(1));phase=1;
+                runningPaw=model.transform.Find("Pet model/Leg 0");
+                Check(runningPaw!=null,"Run animation has an articulated front paw");
+                if(runningPaw){restingPawRotation=runningPaw.localRotation;restingPawPosition=runningPaw.localPosition;}
+                largestPawSwing=0;largestPawLift=0;return;
             }
             if(phase==1)
             {
-                if(game.IsMoving)return;
+                if(game.IsMoving)
+                {
+                    if(runningPaw)
+                    {
+                        largestPawSwing=Mathf.Max(largestPawSwing,Quaternion.Angle(restingPawRotation,runningPaw.localRotation));
+                        largestPawLift=Mathf.Max(largestPawLift,Vector3.Distance(restingPawPosition,runningPaw.localPosition));
+                    }
+                    return;
+                }
                 if(solution.Count>0)
                 {
                     var move=solution.Dequeue();Check(game.TryMove(move.direction),"Tutorial move accepted");return;
                 }
                 if(game.IsPlaying)return;
+                Check(largestPawSwing>20 && largestPawLift>.03f,"Pet visibly swings and lifts its paws while moving through the maze");
                 Check(game.HighestUnlocked==2&&game.Energy==45,"Goal completion unlocks level 2 without a second charge");
                 Check(game.StartLevel(2)&&game.Energy==40,"Next level costs 5 energy");
                 var saved=JsonUtility.FromJson<MazeProgress>(PlayerPrefs.GetString(SaveKey));
@@ -158,7 +209,7 @@ public static class MazeTools
                 if(MazeLevels.TryStep(level,from,direction,out var next)&&seen.Add(next))
                 {parent[next]=from;moves[next]=new Move{direction=direction};queue.Enqueue(next);}
         }
-        if(!seen.Contains(goal))throw new Exception("Tutorial has no solution");
+        if(!seen.Contains(goal))throw new Exception("No safe route in maze level "+level.Number);
         var reverse=new Stack<Move>();for(var p=goal;p!=level.Start;p=parent[p])reverse.Push(moves[p]);
         return new Queue<Move>(reverse);
     }

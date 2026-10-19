@@ -6,6 +6,7 @@ using UnityEngine.Rendering.Universal;
 namespace LittlePaws.Maze
 {
     /// <summary>Renders the existing animated 3D pet into the maze's transparent UI image.</summary>
+    [DefaultExecutionOrder(100)] // Apply movement state before posing and rendering the pet.
     public sealed class MazePet3DView : MonoBehaviour
     {
         public RenderTexture Texture { get; private set; }
