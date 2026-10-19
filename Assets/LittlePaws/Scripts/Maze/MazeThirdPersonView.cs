@@ -15,6 +15,7 @@ namespace LittlePaws.Maze
         public bool CameraIsBehindPet => IsReady && Vector3.Dot(previewCamera.transform.position-pet.transform.position,pet.transform.forward)<0;
         public float VisualYaw => pet?pet.transform.localEulerAngles.y:0f;
         private GameObject stage;
+        private MazeLevel maze;
         private PetVisual pet;
         private Camera previewCamera;
         private Light keyLight;
@@ -27,16 +28,15 @@ namespace LittlePaws.Maze
         private Quaternion facing=Quaternion.identity;
         private readonly List<Material> materials=new List<Material>();
         private readonly List<Mesh> meshes=new List<Mesh>();
-        private readonly List<Wall> walls=new List<Wall>();
         private readonly List<Snake> snakes=new List<Snake>();
         private readonly Dictionary<Camera,int> cameraMasks=new Dictionary<Camera,int>();
         private readonly Dictionary<Light,int> lightMasks=new Dictionary<Light,int>();
-        private sealed class Wall { public Vector2 cell; public Bounds bounds; public Renderer[] pieces; public bool shown=true; }
         private sealed class Snake { public SnakePatrol patrol; public Transform root; public Transform[] body; }
 
         public void Initialize(MazeLevel level,bool puppy)
         {
             ReleaseStage();
+            maze=level;
             if(layer<0)layer=FindFreeLayer();
             if(layer<0){Debug.LogError("No free layer for the rear-view maze.",this);return;}
             mask=1<<layer;
@@ -57,8 +57,7 @@ namespace LittlePaws.Maze
                 if(tile==MazeTile.Wall)
                 {
                     var body=Cube("Hedge "+x+","+y,geometry,at+Vector3.up*.96f,new Vector3(TileMetres,1.92f,TileMetres),hedge);
-                    var top=Cube("Leaf crown",body.transform,new Vector3(0,.51f,0),new Vector3(.98f,.12f,.98f),leaves);
-                    walls.Add(new Wall{cell=new Vector2(x,y),bounds=new Bounds(at+Vector3.up, new Vector3(TileMetres,2.2f,TileMetres)),pieces=new[]{body.GetComponent<Renderer>(),top.GetComponent<Renderer>()}});
+                    Cube("Leaf crown",body.transform,new Vector3(0,.51f,0),new Vector3(.98f,.12f,.98f),leaves);
                 }
                 else if(tile==MazeTile.Mud)
                     Sphere("Mud puddle",geometry,at+Vector3.up*.015f,new Vector3(TileMetres*.86f,.04f,TileMetres*.75f),earth);
@@ -127,20 +126,18 @@ namespace LittlePaws.Maze
         }
         private void PoseCamera()
         {
+            // Keep every hedge solid. Move the camera inside the corridor instead of
+            // cutting holes in walls when the pet turns at a dead end or a corner.
+            Vector3 backwards=pet.transform.localRotation*Vector3.back;
+            float distance=MazeRearControls.CameraDistance(maze,position,
+                new Vector2(backwards.x,backwards.z),3.9f/TileMetres)*TileMetres;
             Vector3 target=pet.transform.localPosition+Vector3.up*.85f;
-            previewCamera.transform.localPosition=pet.transform.localPosition+pet.transform.localRotation*new Vector3(0,3.25f,-3.9f);
+            previewCamera.transform.localPosition=pet.transform.localPosition+backwards*distance+Vector3.up*1.7f;
+            // A wider view keeps the whole pet visible when a nearby hedge pushes us in.
+            previewCamera.fieldOfView=Mathf.Lerp(90,62,Mathf.InverseLerp(1f,3.9f,distance));
             previewCamera.transform.LookAt(stage.transform.TransformPoint(target));
-            var offset=previewCamera.transform.localPosition-target;var ray=new Ray(target,offset.normalized);
-            foreach(var wall in walls)
-            {
-                bool show=(wall.cell-position).sqrMagnitude<100f;
-                // Keep the wall between the follow camera and the pet from hiding it by removing
-                // only its drawing; movement still uses the unchanged maze grid.
-                if(show&&wall.bounds.IntersectRay(ray,out var distance)&&distance<offset.magnitude)show=false;
-                if(show==wall.shown)continue;
-                foreach(var piece in wall.pieces)piece.enabled=show;wall.shown=show;
-            }
         }
+
         private void BuildSnakes(MazeLevel level)
         {
             var skin=Mat("Snake green",new Color(.42f,.65f,.22f));var dark=Mat("Snake eyes",new Color(.08f,.13f,.05f));var white=Mat("Snake eye whites",Color.white);
@@ -215,7 +212,7 @@ namespace LittlePaws.Maze
         {
             foreach(var pair in cameraMasks)if(pair.Key)pair.Key.cullingMask=(pair.Key.cullingMask&~mask)|(pair.Value&mask);
             foreach(var pair in lightMasks)if(pair.Key)pair.Key.cullingMask=(pair.Key.cullingMask&~mask)|(pair.Value&mask);
-            cameraMasks.Clear();lightMasks.Clear();walls.Clear();snakes.Clear();
+            cameraMasks.Clear();lightMasks.Clear();snakes.Clear();
             if(stage){stage.SetActive(false);Destroy(stage);stage=null;}
             if(previewCamera)previewCamera.targetTexture=null;
             if(Texture){Texture.Release();Destroy(Texture);Texture=null;}
