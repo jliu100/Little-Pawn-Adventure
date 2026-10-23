@@ -245,6 +245,80 @@ namespace LittlePaws.Maze
             return p.Finish("Maze Hedge Wall");
         }
 
+        public static Sprite BrickWall()
+        {
+            var p=new Canvas(96);
+            p.Fill(Hex(0xBDA48A)); // Warm mortar stays visibly different from the sand path.
+            Color[] clay={Hex(0xB95E48),Hex(0xC96E50),Hex(0xAE523F),Hex(0xC46347)};
+            for(int row=0;row<4;row++)for(int column=-1;column<3;column++)
+            {
+                float left=column*96+(row%2==0?0:48)+3,bottom=row*48+3;
+                p.RoundRect(left,bottom,left+90,bottom+42,4,Hex(0x824535));
+                p.RoundRect(left,bottom+5,left+90,bottom+42,4,clay[(row+column+5)%clay.Length]);
+                p.Line(left+6,bottom+36,left+84,bottom+36,3,Hex(0xDF9170));
+                p.Line(left+10,bottom+17,left+29,bottom+18,2,Hex(0x9A4E3C,.55f));
+            }
+            p.Line(2,2,190,2,4,Hex(0x734638));
+            p.Line(2,2,2,190,4,Hex(0x8E5946));
+            p.Line(190,2,190,190,4,Hex(0x8E5946));
+            return p.Finish("Maze Brick Wall");
+        }
+
+        public static Sprite WoodFence()
+        {
+            var p=new Canvas(96);
+            p.Fill(Hex(0x604535));
+            // Close-set pickets and two sturdy cross rails read as a blocked fence.
+            for(int i=0;i<3;i++)
+            {
+                float left=5+i*62;
+                p.Polygon(new[]{new Vector2(left,8),new Vector2(left+56,8),
+                    new Vector2(left+56,168),new Vector2(left+28,190),new Vector2(left,168)},Hex(0x8B5837));
+                p.RoundRect(left+5,10,left+51,166,3,Hex(i==1?0xBE8B54u:0xCA975Du));
+                p.Line(left+7,17,left+7,160,3,Hex(0xE6BC7A));
+                p.Line(left+46,17,left+46,160,3,Hex(0x9B693F));
+                p.Line(left+19,25,left+16,71,2,Hex(0xA87548));
+                p.Line(left+35,83,left+38,143,2,Hex(0xA87548));
+                p.Ellipse(left+28,88,6,11,Hex(0x99663E));
+                p.Ellipse(left+28,88,2,6,Hex(0xD6A369));
+            }
+            foreach(int y in new[]{38,125})
+            {
+                p.RoundRect(0,y-4,192,y+17,3,Hex(0x69452F));
+                p.RoundRect(0,y+1,192,y+17,3,Hex(0xA57143));
+                p.Line(0,y+15,192,y+15,2,Hex(0xD6A66A));
+                for(int i=0;i<3;i++)
+                {
+                    p.Ellipse(33+i*62,y+8,3.5f,3.5f,Hex(0x4D4740));
+                    p.Ellipse(32+i*62,y+9,1,1,Hex(0xC5BC9F));
+                }
+            }
+            return p.Finish("Maze Wooden Fence");
+        }
+
+        public static Sprite BushWall()
+        {
+            var p=new Canvas(96);
+            p.Fill(Hex(0x244C36));
+            p.RoundRect(3,3,189,189,35,Hex(0x32643D));
+            for(int i=0;i<12;i++)
+            {
+                float x=29+(i%3)*65+(i%2)*5,y=27+(i/3)*45;
+                p.Ellipse(x,y,34,29,Hex(0x28563A));
+                p.Ellipse(x-3,y+6,31,27,Hex(i%3==0?0x558D47u:0x437D40u));
+                p.Ellipse(x-11,y+14,15,10,Hex(0x6FA451));
+            }
+            // Small leaf pairs give the bushes foliage rather than a flat green surface.
+            for(int i=0;i<14;i++)
+            {
+                float x=19+(i*47)%153,y=19+(i*67)%153;
+                p.Line(x-6,y-5,x+7,y+5,2,Hex(0x315D34));
+                p.Ellipse(x-4,y+3,7,4,Hex(0x89B65F));
+                p.Ellipse(x+5,y+7,7,4,Hex(0x74A852));
+            }
+            return p.Finish("Maze Leafy Bush Wall");
+        }
+
         public static Sprite Floor()
         {
             var p = new Canvas(64);

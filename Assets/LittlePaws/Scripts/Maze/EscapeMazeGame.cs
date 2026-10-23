@@ -19,7 +19,7 @@ namespace LittlePaws.Maze
         Vector2Int cell, held;
         RectTransform safe, boardArea, board, avatar, shadow, controls;
         GameObject selector, playView, modal;
-        Text energyText, regenText, levelText, timerText, hint, menuHint, hazardHeading, hazardGuide, dialogTitle, dialogText;
+        Text characterExperienceText, energyText, regenText, levelText, timerText, hint, menuHint, hazardHeading, hazardGuide, dialogTitle, dialogText;
         Button dialogPrimary, dialogSecondary;
         Text primaryLabel, secondaryLabel, zoomLabel, jumpLabel, movementStatus;
         Button jumpButton, zoomButton, levelsButton, retryButton;
@@ -41,7 +41,7 @@ namespace LittlePaws.Maze
         readonly List<Button> levelButtons=new List<Button>();
         readonly List<Text> levelLabels=new List<Text>();
         readonly List<Sprite> art=new List<Sprite>();
-        Sprite rounded, wall, floor, star, paw, mud, mapArrow;
+        Sprite rounded, wall, brickWall, fenceWall, bushWall, floor, star, paw, mud, mapArrow;
         MazePet3DView petView;
         RawImage petImage;
         UnityEngine.UI.Image startMarker;
@@ -104,6 +104,7 @@ namespace LittlePaws.Maze
             progress.Normalize(DateTime.UtcNow);progress.RefreshEnergy(DateTime.UtcNow);Save();
             font=Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
             rounded=Own(MazeArt.Rounded());wall=Own(MazeArt.Wall());floor=Own(MazeArt.Floor());star=Own(MazeArt.Star());paw=Own(MazeArt.Paw());mud=Own(MazeArt.Mud());mapArrow=Own(MazeArt.MapArrow());
+            brickWall=Own(MazeArt.BrickWall());fenceWall=Own(MazeArt.WoodFence());bushWall=Own(MazeArt.BushWall());
             petView=new GameObject("Maze 3D companion renderer").AddComponent<MazePet3DView>();
             petView.transform.SetParent(transform,false);
             petView.Initialize(PlayerPrefs.GetInt("LittlePaws.Species",0)==1);
@@ -142,6 +143,7 @@ namespace LittlePaws.Maze
                 levelButtons.Add(button);levelLabels.Add(label);
             }
             menuHint=Label(selector.transform,"",new Vector2(28,-495),new Vector2(850,66),18);
+            characterExperienceText=Label(selector.transform,"",new Vector2(28,-556),new Vector2(850,24),16);
             ActionButton(selector.transform,"Village",new Vector2(905,-535),new Vector2(180,40),LeaveForVillage,out _);
 
             playView=Rect("Playing screen",safe,new Vector2(.5f,.5f),Vector2.zero).gameObject;
@@ -185,6 +187,8 @@ namespace LittlePaws.Maze
             held=Vector2Int.zero;moving=false;jumping=false;jumpRequested=false;progress.AbandonAttempt();mode=ScreenMode.Levels;
             dustSequence.Begin(0);if(rearView)rearView.SetVisible(false);
             selector.SetActive(true);playView.SetActive(false);modal.SetActive(false);
+            var character=CharacterProgressStore.Load();
+            characterExperienceText.text="CHARACTER LV "+character.Level+" / "+character.ExperienceInLevel+" / 100 XP | Garden open for testing";
             menuHint.text=TestingMode?"Try any level. Practice does not change your saved progression or energy.":"1-5: find the path / 6-9: snakes / 10-15: jump over mud. Level 1 starts unlocked.";
             RefreshEnergyUI(true);Save();
         }
@@ -234,11 +238,12 @@ namespace LittlePaws.Maze
                 if(overviewMarkers)overviewMarkers.gameObject.SetActive(false);
                 return;
             }
+            Sprite wallSprite=level.Number<=10?brickWall:level.Number<=20?fenceWall:level.Number<=30?bushWall:wall;
             for(int y=0;y<level.Height;y++)for(int x=0;x<level.Width;x++)
             {
                 var tile=level.TileAt(new Vector2Int(x,y));
                 var image=Image("Tile "+x+","+y,board,new Vector2(.5f,.5f),CellPosition(new Vector2Int(x,y)),Vector2.one*cellSize,Color.white);
-                image.sprite=tile==MazeTile.Wall?wall:floor;image.raycastTarget=false;
+                image.sprite=tile==MazeTile.Wall?wallSprite:floor;image.raycastTarget=false;
                 if(tile==MazeTile.Mud)
                 {
                     var puddle=Image("Mud puddle "+x+","+y,board,new Vector2(.5f,.5f),CellPosition(new Vector2Int(x,y)),Vector2.one*cellSize*.93f,Color.white);
@@ -670,11 +675,15 @@ namespace LittlePaws.Maze
         void Win()
         {
             held=Vector2Int.zero;
+            CharacterProgress character=!TestingMode&&CharacterProgressStore.RewardsAllowed?CharacterProgressStore.Load():null;
             if(!progress.Complete(level.Number))return;
+            int gained=character!=null?character.RewardMaze(level.Number,DateTime.UtcNow):0;
+            if(character!=null)CharacterProgressStore.Save(character);
+            string experience=character!=null?"\n+"+gained+" XP / Character LV "+character.Level:"";
             mode=ScreenMode.Won;Save();RefreshEnergyUI(true);
             bool last=level.Number==50;
             Dialog(last?"All 50 trails complete!":"Level "+level.Number+" complete!",
-                "Time: "+TimeLabel(Mathf.FloorToInt(elapsed))+"\n"+(last?"Your little adventurer found every exit.":"Level "+(level.Number+1)+" is now unlocked."),
+                "Time: "+TimeLabel(Mathf.FloorToInt(elapsed))+experience+"\n"+(last?"Your little adventurer found every exit.":"Level "+(level.Number+1)+" is now unlocked."),
                 last?"Choose a level":TestingMode?"Next level / Free test":"Next level / 5 energy",()=>{if(last)ShowLevels();else StartLevel(level.Number+1);},"Levels",ShowLevels);
         }
         void ConfirmRetry()

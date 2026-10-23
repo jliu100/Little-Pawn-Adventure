@@ -15,9 +15,17 @@ namespace LittlePaws
         readonly Dictionary<string,TownLocation> places = new Dictionary<string,TownLocation>();
         readonly Dictionary<TownLocation,RectTransform> placeLabels = new Dictionary<TownLocation,RectTransform>();
         TownLocation pendingVisit;
+        CharacterProgress character;
+        GardenWorldView gardenWorld;
+        GardenScreen gardenScreen;
+        RectTransform townTray;
+        Text characterLevelText;
+        readonly List<GameObject> villageChrome=new List<GameObject>();
+        bool gardenOpen;
+        public bool GardenIsOpen=>gardenOpen;
         RectTransform placeCard;
         Text placeTitle, placeDescription;
-        GameObject enterHomeButton, enterMazeButton;
+        GameObject enterHomeButton, enterMazeButton, enterRescueButton;
         public bool Puppy { get; private set; }
         public float Cleanliness { get; private set; } = 35;
         public float WashProgress { get; private set; }
@@ -57,7 +65,9 @@ namespace LittlePaws
             Screen.autorotateToPortrait = false; Screen.autorotateToPortraitUpsideDown = false;
             Screen.autorotateToLandscapeLeft = true; Screen.autorotateToLandscapeRight = true;
             Application.targetFrameRate = 60;
+            character=CharacterProgressStore.Load();
             var home = townMap ? TownVisual.Build() : HomeVisual.Build();
+            if(townMap)gardenWorld=home.GetComponentInChildren<GardenWorldView>();
             if(townMap) foreach(var place in home.GetComponentsInChildren<TownLocation>())places.Add(place.Id,place);
             // Auto-sync is disabled: flush generated positions/scales before caching bounds.
             // Otherwise the navigation snapshot can retain default colliders at the origin.
@@ -128,14 +138,16 @@ namespace LittlePaws
                 var old=events.GetComponent<StandaloneInputModule>(); if(old) Destroy(old);
                 events.gameObject.AddComponent<InputSystemUIInputModule>().AssignDefaultActions();
             }
-            var header=Panel("Header",safeRoot,new Vector2(0,1),new Vector2(0,1),new Vector2(22,-22),new Vector2(410,94),cream);
+            var header=Panel("Header",safeRoot,new Vector2(0,1),new Vector2(0,1),new Vector2(22,-22),new Vector2(410,118),cream);
             Label(header,townMap?"LITTLE PAWS / VILLAGE":"LITTLE PAWS ADVENTURE",new Vector2(20,-14),new Vector2(370,30),24,ink,FontStyle.Bold);
             speciesText=Label(header,Puppy?"Mochi / small puppy":"Miso / little kitten",new Vector2(20,-48),new Vector2(365,28),19,ink);
+            characterLevelText=Label(header,"",new Vector2(20,-82),new Vector2(370,22),15,ink);
+            RefreshCharacterLevel();
             var choices=Panel("Choose companion",safeRoot,Vector2.one,Vector2.one,new Vector2(-22,-22),new Vector2(304,94),cream);
             Label(choices,"YOUR COMPANION",new Vector2(18,-10),new Vector2(268,22),14,ink,FontStyle.Bold);
             Button(choices,"Kitten",new Vector2(15,-38),new Vector2(130,42),()=>Switch(false));
             Button(choices,"Puppy",new Vector2(157,-38),new Vector2(130,42),()=>Switch(true));
-            var card=Panel("Status after washing",safeRoot,new Vector2(0,1),new Vector2(0,1),new Vector2(22,-132),new Vector2(270,202),cream);
+            var card=Panel("Status after washing",safeRoot,new Vector2(0,1),new Vector2(0,1),new Vector2(22,-160),new Vector2(270,202),cream);
             statusPanel=card.gameObject;
             Label(card,"PET STATUS",new Vector2(18,-12),new Vector2(238,25),19,ink,FontStyle.Bold);
             Meter(card,"Health",82,48,new Color(.43f,.68f,.48f),out _,out _);
@@ -151,7 +163,8 @@ namespace LittlePaws
             Label(footer,"BATH TIME",new Vector2(159,-14),new Vector2(280,28),21,ink,FontStyle.Bold);
             washText=Label(footer,"Drag soap over your pet",new Vector2(159,-47),new Vector2(295,30),17,ink);
             washFill=Bar(footer,new Vector2(159,-90),new Vector2(280,9),new Color(.36f,.69f,.79f),0);
-            var instructions=Panel("Instruction",safeRoot,new Vector2(.5f,1),new Vector2(.5f,1),new Vector2(15,-130),new Vector2(490,42),new Color(.98f,.96f,.91f,.93f));
+            var instructions=Panel("Instruction",safeRoot,new Vector2(.5f,1),new Vector2(.5f,1),new Vector2(15,-154),new Vector2(490,42),new Color(.98f,.96f,.91f,.93f));
+            villageChrome.Add(header.gameObject);villageChrome.Add(choices.gameObject);villageChrome.Add(instructions.gameObject);
             hint=Label(instructions,"A little home. A lot of love.",new Vector2(14,-7),new Vector2(462,30),17,ink);hint.alignment=TextAnchor.MiddleCenter;
             hint.text=townMap ? "Explore the village. Tap a place to visit." : "Tap an empty spot on the floor to walk.";
             if(townMap)
@@ -168,13 +181,14 @@ namespace LittlePaws
 
         void BuildTownUI()
         {
-            var tray=Panel("Village destinations",safeRoot,new Vector2(.5f,0),new Vector2(.5f,0),new Vector2(0,22),new Vector2(960,92),cream);
+            var tray=Panel("Village destinations",safeRoot,new Vector2(.5f,0),new Vector2(.5f,0),new Vector2(0,22),new Vector2(1140,92),cream);
+            townTray=tray;
             Label(tray,"EXPLORE YOUR VILLAGE",new Vector2(18,-8),new Vector2(800,22),14,ink,FontStyle.Bold);
-            string[] ids={"home","weapon","hospital","food","adventure"};
+            string[] ids={"home","weapon","hospital","food","adventure","garden","rescue"};
             for(int i=0;i<ids.Length;i++)
             {
                 string id=ids[i];var place=places[id];
-                Button(tray,place.Title,new Vector2(16+i*187,-36),new Vector2(179,42),()=>Visit(id));
+                Button(tray,place.Title,new Vector2(16+i*159,-36),new Vector2(153,42),()=>Visit(id));
                 var label=Button(safeRoot,place.Title,Vector2.zero,new Vector2(160,34),()=>Visit(id));
                 var rect=label.GetComponent<RectTransform>();rect.anchorMin=rect.anchorMax=new Vector2(.5f,.5f);rect.pivot=new Vector2(.5f,.5f);
                 placeLabels.Add(place,rect);
@@ -184,20 +198,58 @@ namespace LittlePaws
             placeDescription=Label(placeCard,"",new Vector2(20,-62),new Vector2(264,90),18,ink);
             enterHomeButton=Button(placeCard,"Enter home",new Vector2(20,-174),new Vector2(167,40),()=>LoadScene("PetHome")).gameObject;
             enterMazeButton=Button(placeCard,"Escape Maze",new Vector2(20,-174),new Vector2(167,40),()=>LoadScene("EscapeMaze")).gameObject;
+            enterRescueButton=Button(placeCard,"Rescue the egg",new Vector2(20,-174),new Vector2(167,40),()=>LoadScene("RescueEgg")).gameObject;
             Button(placeCard,"Close",new Vector2(198,-174),new Vector2(86,40),()=>placeCard.gameObject.SetActive(false));
             placeCard.gameObject.SetActive(false);
+            BuildGardenUI();
         }
         void LoadScene(string scene){Save();SceneManager.LoadScene(scene);}
         public bool Visit(string id)
         {
-            if(!townMap || !places.TryGetValue(id,out var place) || !TryWalkTo(place.Entrance))return false;
+            if(!townMap || gardenOpen || !places.TryGetValue(id,out var place) || !TryWalkTo(place.Entrance))return false;
             pendingVisit=place;placeCard.gameObject.SetActive(false);hint.text="Walking to "+place.Title+"...";return true;
         }
         void ShowPlace(TownLocation place)
         {
+            if(place.Id=="garden"){OpenGarden();return;}
             placeTitle.text=place.Title;placeDescription.text=place.Description;
-            enterHomeButton.SetActive(place.Id=="home");enterMazeButton.SetActive(place.Id=="adventure");placeCard.gameObject.SetActive(true);
+            enterHomeButton.SetActive(place.Id=="home");enterMazeButton.SetActive(place.Id=="adventure");enterRescueButton.SetActive(place.Id=="rescue");placeCard.gameObject.SetActive(true);
             hint.text="Welcome to "+place.Title+".";
+        }
+
+        void RefreshCharacterLevel()
+        {
+            if(characterLevelText)characterLevelText.text="CHARACTER LV "+character.Level+" / "+character.ExperienceInLevel+" / 100 XP";
+        }
+        void BuildGardenUI()
+        {
+            gardenScreen=new GameObject("Garden farming controller").AddComponent<GardenScreen>();gardenScreen.transform.SetParent(transform,false);
+            gardenScreen.Initialize(safeRoot,rounded,font,gardenWorld,cam,CloseGarden);
+        }
+        public bool OpenGarden()
+        {
+            if(!townMap||gardenOpen||!places.ContainsKey("garden"))return false;
+            StopWalking();placeCard.gameObject.SetActive(false);statusPanel.SetActive(false);gardenOpen=true;
+            townTray.gameObject.SetActive(false);foreach(var entry in placeLabels)entry.Value.gameObject.SetActive(false);
+            foreach(var chrome in villageChrome)chrome.SetActive(false);
+            places["garden"].GetComponent<BoxCollider>().enabled=false;
+            PoseGardenCamera();gardenScreen.Show();return true;
+        }
+        void PoseGardenCamera()
+        {
+            Vector3 focus=places["garden"].transform.position+new Vector3(0,.55f,0);
+            cam.transform.position=focus+new Vector3(5,8,-8);cam.transform.LookAt(focus);
+            cam.orthographicSize=Mathf.Max(3.35f,5.95f/cam.aspect);
+        }
+        public void CloseGarden()
+        {
+            if(!gardenOpen)return;
+            gardenScreen.Hide();gardenOpen=false;places["garden"].GetComponent<BoxCollider>().enabled=true;townTray.gameObject.SetActive(true);
+            foreach(var entry in placeLabels)entry.Value.gameObject.SetActive(true);
+            foreach(var chrome in villageChrome)chrome.SetActive(true);
+            cam.transform.position=new Vector3(15,22,-28);cam.transform.LookAt(new Vector3(0,.4f,0));
+            cam.orthographicSize=Mathf.Max(13.5f,21.5f/cam.aspect);
+            hint.text="Explore the village. Tap a place to visit.";
         }
 
         void Update()
@@ -209,6 +261,7 @@ namespace LittlePaws
                 safeRoot.anchorMin=new Vector2(lastSafe.x/Screen.width,lastSafe.y/Screen.height);
                 safeRoot.anchorMax=new Vector2(lastSafe.xMax/Screen.width,lastSafe.yMax/Screen.height);
             }
+            if(gardenOpen){PoseGardenCamera();return;}
             cam.orthographicSize=townMap?Mathf.Max(13.5f,21.5f/cam.aspect):Mathf.Max(5.4f,9.6f/cam.aspect);
             foreach(var entry in placeLabels)
             {
@@ -240,7 +293,9 @@ namespace LittlePaws
             if(dragging&&Time.unscaledTime-lastActive>.16f) wasRubbing=false;
             if(dragging&&wasRubbing)
             {
+                bool justFinished=WashProgress<WashDuration;
                 WashProgress=Mathf.Min(WashDuration,WashProgress+Time.deltaTime);
+                justFinished=justFinished&&WashProgress>=WashDuration;
                 Cleanliness=Mathf.Min(100,Cleanliness+26*Time.deltaTime);
                 washFill.fillAmount=WashProgress/WashDuration;
                 washText.text="Washing... "+Mathf.CeilToInt(Mathf.Max(0,WashDuration-WashProgress))+"s";
@@ -248,8 +303,14 @@ namespace LittlePaws
                 if(emission>.07f){emission=0;EmitBubble();}
                 if(WashProgress>=WashDuration)
                 {
-                    if(!StatusVisible){ShowStatus(); Save();}
-                    hint.text="All fresh! Your companion's status is ready."; washText.text="Lovely and clean!";
+                    if(justFinished)
+                    {
+                        ShowStatus();int earned=CharacterProgressStore.RewardsAllowed?character.RewardBath(System.DateTime.UtcNow):0;
+                        if(earned>0){CharacterProgressStore.Save(character);RefreshCharacterLevel();}
+                        hint.text=earned>0?"All fresh! Daily bath +"+earned+" XP.":"All fresh! Your companion's status is ready.";
+                        washText.text="Lovely and clean!";Save();
+                    }
+                    washText.text="Lovely and clean!";
                 }
                 if(cleanFill){cleanFill.fillAmount=Cleanliness/100;cleanValue.text=Mathf.RoundToInt(Cleanliness)+"%";}
             }
@@ -346,7 +407,7 @@ namespace LittlePaws
         }
         bool TapBlockedByUI(Vector2 screen)
         {
-            if(dragging || !cam || !cam.pixelRect.Contains(screen))return true;
+            if(gardenOpen || dragging || !cam || !cam.pixelRect.Contains(screen))return true;
             if(!EventSystem.current)return false;
             uiHits.Clear();
             EventSystem.current.RaycastAll(new PointerEventData(EventSystem.current){position=screen},uiHits);
@@ -400,7 +461,7 @@ namespace LittlePaws
         }
         public bool TryWalkTo(Vector3 destination)
         {
-            if(dragging)return false;
+            if(dragging||gardenOpen)return false;
             if(!navigation.TryPath(pet.position,destination,out var path))
             {
                 hint.text="That spot is too close to furniture or cannot be reached.";

@@ -131,10 +131,13 @@ namespace LittlePaws.Maze
             Vector3 backwards=pet.transform.localRotation*Vector3.back;
             float distance=MazeRearControls.CameraDistance(maze,position,
                 new Vector2(backwards.x,backwards.z),3.9f/TileMetres)*TileMetres;
-            Vector3 target=pet.transform.localPosition+Vector3.up*.85f;
-            previewCamera.transform.localPosition=pet.transform.localPosition+backwards*distance+Vector3.up*1.7f;
-            // A wider view keeps the whole pet visible when a nearby hedge pushes us in.
-            previewCamera.fieldOfView=Mathf.Lerp(90,62,Mathf.InverseLerp(1f,3.9f,distance));
+            // Frame the pet lower in the view and expose the floor in front of it.
+            // The raised angle lets nearby snakes remain visible over the pet's head.
+            Vector3 target=pet.transform.localPosition-backwards*MazeRearControls.CameraLookAhead
+                +Vector3.up*MazeRearControls.CameraAimHeight;
+            previewCamera.transform.localPosition=pet.transform.localPosition+backwards*distance
+                +Vector3.up*MazeRearControls.CameraHeight(distance);
+            previewCamera.fieldOfView=MazeRearControls.CameraFieldOfView(distance);
             previewCamera.transform.LookAt(stage.transform.TransformPoint(target));
         }
 

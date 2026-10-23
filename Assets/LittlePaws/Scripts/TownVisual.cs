@@ -15,7 +15,7 @@ namespace LittlePaws
         public static GameObject Build()
         {
             Materials.Clear();
-            var town = new GameObject("Little Paws Town — five destinations");
+            var town = new GameObject("Little Paws Town — seven destinations");
             var owned = town.AddComponent<RuntimeVisualResources>();
             Shape(town.transform,"Town ground",PrimitiveType.Cube,new Vector3(0,-.22f,0),new Vector3(26,.44f,22),new Color(.47f,.66f,.37f));
             // Dedicated surface avoids retrieving a disabled primitive collider awaiting destruction.
@@ -44,6 +44,8 @@ namespace LittlePaws
             Hospital(town.transform);
             Food(town.transform);
             Adventure(town.transform);
+            Garden(town.transform);
+            EggRescue(town.transform);
 
             // Sparse edge planting frames the town without obscuring the destinations.
             Tree(town.transform,new Vector3(-11.6f,0,8.5f),1.1f);
@@ -160,6 +162,32 @@ namespace LittlePaws
             Star(p,new Vector3(0,2.97f,-1.22f),.64f,new Color(1f,.82f,.30f));
             for(int i=0;i<3;i++) Star(p,new Vector3(-.5f+i*.5f,1.05f+i*.4f,.33f),.13f,new Color(1f,.91f,.58f));
             for(int i=0;i<3;i++) Disc(p,"Star trail stepping stone",new Vector3((i%2==0?-.23f:.23f),.04f,-2.05f-i*.3f),.21f,new Color(.98f,.86f,.52f));
+        }
+
+        private static void Garden(Transform parent)
+        {
+            var p=Location(parent,"garden","Garden","Plant corn and tomatoes, harvest with your sickle, and visit the Scarecrow for a daily crop-guard game. Open for testing.",new Vector3(0,0,-5.2f),new Vector3(0,0,-8.2f));
+            p.gameObject.AddComponent<GardenWorldView>().Build();
+            Path(parent,new Vector3(0,0,-8.2f),new Vector3(0,0,-7.65f),1.2f);
+        }
+
+        private static void EggRescue(Transform parent)
+        {
+            var p=Location(parent,"rescue","Rescue the egg","Rooster or hen? Lead your knight through three forest stages. Level 1 is open. Levels 2 and 3: coming soon.",new Vector3(-4.2f,0,6),new Vector3(-4.2f,0,2.2f));
+            p.GetComponent<BoxCollider>().size=new Vector3(2.3f,3.4f,3f);
+            Path(parent,new Vector3(-4.2f,0,-2),new Vector3(-4.2f,0,2.2f),1.2f);
+            Box(p,"Rescue gate stone base",new Vector3(0,.15f,0),new Vector3(2.25f,.3f,2.7f),Stone);
+            for(int side=-1;side<=1;side+=2)
+            {
+                Box(p,"Forest rescue gatepost",new Vector3(side*.94f,1.45f,0),new Vector3(.3f,2.9f,.4f),Timber);
+                Box(p,"Crimson rescue banner",new Vector3(side*.94f,2.0f,-.28f),new Vector3(.48f,.85f,.08f),new Color(.68f,.23f,.19f));
+            }
+            Box(p,"Rescue gate lintel",new Vector3(0,2.9f,0),new Vector3(2.4f,.3f,.5f),Timber);
+            Box(p,"Rescue crest",new Vector3(0,2.85f,-.32f),new Vector3(1.15f,.85f,.1f),new Color(.23f,.39f,.32f));
+            Shape(p,"Egg crest",PrimitiveType.Sphere,new Vector3(0,2.89f,-.4f),new Vector3(.4f,.58f,.08f),Cream);
+            Sword(p,new Vector3(-.6f,1.35f,-.33f),-26);
+            Sword(p,new Vector3(.6f,1.35f,-.33f),26);
+            Disc(p,"Rescue trail stone",new Vector3(0,.04f,-1.9f),.48f,new Color(.86f,.69f,.39f));
         }
 
         private static void Door(Transform p,Vector3 at,Color color,float width)

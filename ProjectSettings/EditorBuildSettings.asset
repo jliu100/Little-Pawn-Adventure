@@ -14,5 +14,8 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/EscapeMaze.unity
     guid: c8000d3333c842989f8f226435687479
+  - enabled: 1
+    path: Assets/Scenes/RescueEgg.unity
+    guid: e50d3efb96c142869e67c353a19a402e
   m_configObjects:
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}

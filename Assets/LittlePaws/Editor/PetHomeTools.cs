@@ -95,8 +95,8 @@ public static class PetHomeTools
                 game=UnityEngine.Object.FindAnyObjectByType<PetHomeGame>();
                 if(!game || !game.townMap || !GameObject.Find("Companion")){if(elapsed>15)Finish("Village initialization timeout");return;}
                 if(elapsed<.5)return;
-                Require(UnityEngine.Object.FindObjectsByType<TownLocation>().Length==5,"Five village destinations exist");
-                Require(game.TryTapFloor(Camera.main.WorldToScreenPoint(new Vector3(0,0,-4))),"Village ground accepts floor raycast");
+                Require(UnityEngine.Object.FindObjectsByType<TownLocation>().Length==7,"Seven village destinations exist");
+                Require(game.TryTapFloor(Camera.main.WorldToScreenPoint(new Vector3(0,0,-9.3f))),"Village ground accepts floor raycast");
                 Require(game.TryTapPlace(Camera.main.WorldToScreenPoint(new Vector3(0,1.2f,6))),"Tapping forge selects its entrance");
                 Require(game.Visit(mapIds[0]),"Home entrance reachable");phase=101;start=EditorApplication.timeSinceStartup;return;
             }
@@ -106,6 +106,12 @@ public static class PetHomeTools
                 TownLocation destination=null;
                 foreach(var place in UnityEngine.Object.FindObjectsByType<TownLocation>())if(place.Id==mapIds[mapIndex])destination=place;
                 Require(destination && Vector3.Distance(game.PetPosition,destination.Entrance)<.02f,"Arrived at "+mapIds[mapIndex]);
+                if(mapIds[mapIndex]=="garden")
+                {
+                    Require(game.GardenIsOpen,"Arriving opens the Garden preview");
+                    Require(UnityEngine.Object.FindAnyObjectByType<GardenWorldView>()!=null,"Garden fields and one scarecrow exist");
+                    game.CloseGarden();Require(!game.GardenIsOpen,"Garden closes back to village");
+                }
                 mapIndex++;
                 if(mapIndex==mapIds.Length){Finish(null);return;}
                 Require(game.Visit(mapIds[mapIndex]),mapIds[mapIndex]+" entrance reachable");start=EditorApplication.timeSinceStartup;return;
@@ -176,7 +182,7 @@ public static class PetHomeTools
         catch(Exception ex){Finish(ex.ToString());}
     }
     static int mapIndex;
-    static readonly string[] mapIds={"home","weapon","hospital","food","adventure"};
+    static readonly string[] mapIds={"home","weapon","hospital","food","adventure","garden","rescue"};
     static bool checkedEarly;
     static void RequireOnceHidden(){if(checkedEarly)return;checkedEarly=true;Require(!game.StatusVisible,"Status remains hidden before washing completes");}
     static void Finish(string error)

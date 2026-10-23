@@ -1,0 +1,1 @@
+PASS: scene/UI, level locks, hero choice, combat visuals, stage transitions, victory/defeat, and real village navigation/entry.

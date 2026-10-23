@@ -17,6 +17,15 @@ namespace LittlePaws.Maze
         // Grid-space camera collision includes the near plane's width, so neither
         // the camera nor its visible edges can cross a hedge during a turn.
         public const float CameraWallClearance=.1f;
+        // Look down the route from above the pet's head, even when a rear wall
+        // pushes the camera forward. Distances here are world metres.
+        public const float CameraLookAhead=1.2f, CameraAimHeight=.5f;
+        public static float CameraHeight(float distanceMetres) => 2.9f+.95f*distanceMetres;
+        public static float CameraFieldOfView(float distanceMetres)
+        {
+            float blend=Math.Max(0,Math.Min(1,(distanceMetres-1f)/2.9f));
+            return 72f-10f*blend;
+        }
         public static float CameraDistance(MazeLevel level,Vector2 origin,Vector2 backwards,float desiredDistance)
         {
             float nearest=desiredDistance;
